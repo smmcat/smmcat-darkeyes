@@ -1,4 +1,4 @@
-import { Context, Schema, h } from 'koishi'
+import { Context, Schema, Session, h } from 'koishi'
 import { } from 'koishi-plugin-smmcat-localstorage'
 import path from 'path'
 import fs from 'fs/promises'
@@ -10,12 +10,14 @@ export interface Config {
   verifyPass: string[]
   verifyName: string[]
   customPlayName: boolean
+  muteUser: boolean
 }
 export const inject = ['localstorage']
 
 export const Config: Schema<Config> = Schema.object({
   autoClearPlay: Schema.number().default(12e4).description("指定等待时间未进行自动结束游戏"),
   customPlayName: Schema.boolean().default(false).description("由玩家自己创建游戏名字"),
+  muteUser: Schema.boolean().default(false).description("阵亡是否群内禁言（仅支持部分适配器）"),
   verifyPass: Schema.array(String).role("table").default([
     "涩图",
     "约炮",
@@ -311,16 +313,27 @@ export function apply(ctx: Context, config: Config) {
       this.playGuild[session.guildId].countDown && this.playGuild[session.guildId].countDown();
       const playUserList = Object.keys(this.playGuild[session.guildId].playUser);
       playUserList.forEach((item) => {
+        if (darkEyes.playGuild[session.guildId].playingUser[item].isDie || darkEyes.playGuild[session.guildId].playingUser[item].referendum) {
+          // 解除禁言玩家
+          config.muteUser &&
+            session.bot.muteGuildMember &&
+            session.bot.muteGuildMember(session.guildId, item, 0)
+        }
         delete darkEyes.playingUser[item];
       });
+
       delete this.playGuild[session.guildId];
       config.deBug && console.log(darkEyes.playGuild);
       config.deBug && console.log(darkEyes.playingUser);
+      config.muteUser &&
+        session.bot.internal && session.bot.internal.setGroupWholeBan(session.guildId, false)
       if (!auto)
         return { code: false, msg: "天黑请闭眼游戏已主动结束" };
     },
     // 开始游戏
-    async startPlay(session) {
+    async startPlay(_session: Session) {
+
+      let session = _session
       const isPlay = this.verifyIsPlay(session);
       if (!isPlay.code) {
         await session.send(isPlay.msg);
@@ -335,6 +348,7 @@ export function apply(ctx: Context, config: Config) {
       this.playGuild[session.guildId].closeTime && this.playGuild[session.guildId].closeTime();
       let result = "";
       while (true) {
+        session = this.playGuild[session.guildId].session
         this.playGuild[session.guildId].procedure++;
         this.playGuild[session.guildId].light = true;
         const res2 = this.battleReport(session);
@@ -345,6 +359,10 @@ export function apply(ctx: Context, config: Config) {
           result = darkEyes.overInfoMsg(session);
           break;
         }
+
+        config.muteUser &&
+          session.bot.internal && session.bot.internal.setGroupWholeBan(session.guildId, false)
+
         this.playGuild[session.guildId].session.send(this.playGuild[session.guildId].procedure == 1 ? "第一天的白天，大家可以简单都认识认识，或者直接参与 /投票 下标 进行投票。" : "白天所有人均可以选择 /投票 下标 进行投票。");
         await this.countDown(session, 120);
         await this.settlementReferendum(session);
@@ -358,6 +376,10 @@ export function apply(ctx: Context, config: Config) {
           result = darkEyes.overInfoMsg(session);
           break;
         }
+
+        config.muteUser &&
+          session.bot.internal && session.bot.internal.setGroupWholeBan(session.guildId, true)
+          
         this.playGuild[session.guildId].session.send("黑夜了，平民睡着了，而两大势力在窃机行动...");
         this.autoBattleReport(session);
         await this.countDown(session, 60, "天亮");
@@ -736,6 +758,8 @@ ${selsectKey.map((item) => {
       this.playGuild[guild].playUser[session.userId].hitCount--;
       this.playGuild[guild].playUser[session.userId].isSetHit = true;
       goal.isDie = true;
+      // 禁言玩家
+      config.muteUser && session.bot.muteGuildMember && session.bot.muteGuildMember(session.guildId, goal.session.userId, 360000)
       goal.session.send(darkEyes.isMe(session) + "你已阵亡，您可以留下 /遗言 提供给群众有用的信息");
       this.playGuild[guild].session.send(`夜晚有一位路过的靓仔把身份是「${infoRule.dict[goal.duty]}」的 ${goal.characters.name} 一枪爆头...`);
       const msg = this.playGuild[guild].playUser[session.userId].hitCount ? `已命中，${darkEyes.isMe(session)}你消耗了一枚弹药，你还剩余弹药数：` + this.playGuild[guild].playUser[session.userId].hitCount : "已命中，你的弹药数已用完";
@@ -769,6 +793,8 @@ ${selsectKey.map((item) => {
       goal.sethealCount++;
       if (goal.sethealCount == 2) {
         goal.isDie = true;
+        // 禁言玩家
+        config.muteUser && session.bot.muteGuildMember && session.bot.muteGuildMember(session.guildId, goal.session.userId, 360000)
         goal.session.send(darkEyes.isMe(session) + "你已阵亡，您可以留下 /遗言 提供给群众有用的信息");
         this.playGuild[guild].session.send(`身份是「${infoRule.dict[goal.duty]}」的 ${goal.characters.name} 被 ${infoRule.dict[Duty.medic]} 针了两次，针死了...`);
       } else {
@@ -865,8 +891,10 @@ ${selsectKey.map((item) => {
         await session.send(`票数相同，无法决定。本轮投票作废...`);
         return
       }
-      const msg = [...maxUserList[0]].map((item) => {
+      const msg = maxUserList.map((item) => {
         item.referendum = true;
+        // 禁言玩家
+        config.muteUser && session.bot.muteGuildMember && session.bot.muteGuildMember(session.guildId, item.session.userId, 360000)
         item.session && item.session.send(`你扮演的 ${item.characters.name} 已被投票，您可以留下 /遗言 提供给有用的信息`);
         return `大部分群众们认为 ${item.characters.name} 是大坏坏，ta被投票了出去...
 ta 的身份是 「${infoRule.dict[item.duty]}」`;
@@ -895,6 +923,8 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
           return;
         if (!item.isHeal) {
           item.isDie = true;
+          // 禁言玩家
+          config.muteUser && session.bot.muteGuildMember && session.bot.muteGuildMember(session.guildId, item.session.userId, 360000)
           item.session.send(`你扮演的 ${item.characters.name} 已经阵亡，您可以留下 /遗言 提供给有用的信息`);
           return `早晨人们发现身份是「${infoRule.dict[item.duty]}」的${item.characters.name}躺在大街上。`;
         } else {
@@ -969,10 +999,8 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
     },
     // 更新 session 数据
     updateSession(session) {
-      if (session.guildId)
-        return;
-      if (!this.playingUser[session.userId])
-        return;
+      if (session.guildId) return;
+      if (!this.playingUser[session.userId]) return;
       const guildId = this.playingUser[session.userId];
       config.deBug && console.log(this.playingUser);
       if (guildId) {
@@ -981,12 +1009,11 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
       }
     },
     // 更新群 session 数据
-    updateGuildId(session) {
+    updateGuildId(session: Session) {
       if (session.guildId) {
-        if (!this.playGuild[session.userId])
-          return;
+        if (!darkEyes.playingUser[session.userId] && darkEyes.playingUser[session.userId] !== session.guildId) return;
         config.deBug && console.log(session.guildId + "->更新最新的群session");
-        this.playGuild[session.guildId].session = session;
+        darkEyes.playGuild[session.guildId].session = session;
       }
     }
   };
@@ -995,7 +1022,7 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
     .command('天黑请闭眼')
 
   ctx
-    .command('开始游戏')
+    .command('天黑请闭眼/开始游戏')
     .action(async ({ session }) => {
       const res = await darkEyes.startPlay(session)
       await session.send(res)
@@ -1172,11 +1199,7 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
   }
 
   ctx.middleware(async (session, next) => {
-    if (session.guildId) {
-      darkEyes.updateGuildId(session)
-    } else {
-      darkEyes.updateSession(session)
-    }
+    darkEyes.updateSession(session)
     return await next()
   }, true)
 
