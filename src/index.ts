@@ -785,7 +785,7 @@ ${selsectKey.map((item) => {
       const guild = this.playingUser[session.userId];
       if (!this.playGuild[guild]?.isPlay)
         return { code: false, msg: "未开始进行游戏 请先 /开始游戏" };
-      if (!this.playGuild[guild].playUser[session.userId].isDie || !this.playGuild[guild].playUser[session.userId].referendum)
+      if (this.playGuild[guild].playUser[session.userId].isDie || this.playGuild[guild].playUser[session.userId].referendum)
         return { code: false, msg: "你还未阵亡，无法发表遗言" };
       if (this.playGuild[guild].playUser[session.userId].isLastWords)
         return { code: false, msg: "你已发表过遗言，无法再次发表遗言" };
@@ -861,7 +861,11 @@ ${selsectKey.map((item) => {
       }
       const maxNum = Math.max(...bevoteList.map((item) => item.beVoted));
       const maxUserList = bevoteList.filter((item) => item.beVoted === maxNum);
-      const msg = maxUserList.map((item) => {
+      if (maxUserList.length > 2) {
+        await session.send(`票数相同，无法决定。本轮投票作废...`);
+        return
+      }
+      const msg = [...maxUserList[0]].map((item) => {
         item.referendum = true;
         item.session && item.session.send(`你扮演的 ${item.characters.name} 已被投票，您可以留下 /遗言 提供给有用的信息`);
         return `大部分群众们认为 ${item.characters.name} 是大坏坏，ta被投票了出去...
@@ -1168,7 +1172,11 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
   }
 
   ctx.middleware(async (session, next) => {
-    darkEyes.updateSession(session)
+    if (session.guildId) {
+      darkEyes.updateGuildId(session)
+    } else {
+      darkEyes.updateSession(session)
+    }
     return await next()
   }, true)
 
