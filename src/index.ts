@@ -305,7 +305,7 @@ export function apply(ctx: Context, config: Config) {
       return { code: true, msg: `加入成功，你现在将扮演 ${characters.name} 进行游戏！`, name: characters.name };
     },
     // 结束游戏
-    clearPlay(session, auto = false) {
+    clearPlay(session: Session, auto = false) {
       const res = this.verifyIsPlay(session);
       if (!res.code)
         return res;
@@ -313,11 +313,8 @@ export function apply(ctx: Context, config: Config) {
       this.playGuild[session.guildId].countDown && this.playGuild[session.guildId].countDown();
       const playUserList = Object.keys(this.playGuild[session.guildId].playUser);
       playUserList.forEach((item) => {
-        if (darkEyes.playGuild[session.guildId].playingUser[item].isDie || darkEyes.playGuild[session.guildId].playingUser[item].referendum) {
-          // 解除禁言玩家
-          config.muteUser &&
-            session.bot.muteGuildMember &&
-            session.bot.muteGuildMember(session.guildId, item, 0)
+        if (darkEyes.playGuild[session.guildId]?.playingUser?.[item]?.isDie || darkEyes.playGuild[session.guildId]?.playingUser?.[item]?.referendum) {
+          config.muteUser && session.bot.muteGuildMember && session.bot.muteGuildMember(session.guildId, item, 0);
         }
         delete darkEyes.playingUser[item];
       });
@@ -379,7 +376,7 @@ export function apply(ctx: Context, config: Config) {
 
         config.muteUser &&
           session.bot.internal && session.bot.internal.setGroupWholeBan(session.guildId, true)
-          
+
         this.playGuild[session.guildId].session.send("黑夜了，平民睡着了，而两大势力在窃机行动...");
         this.autoBattleReport(session);
         await this.countDown(session, 60, "天亮");
@@ -917,7 +914,8 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
         return;
       }
       const maxNum = Math.max(...guild.nowTemp.map((item) => item.killBeVoted));
-      const maxUserList = guild.nowTemp.filter((item) => item.killBeVoted === maxNum)[0];
+      const filterList = guild.nowTemp.filter((item) => item.killBeVoted === maxNum);
+      const maxUserList = filterList[tool.random(0, filterList.length)]
       const msg = [maxUserList].map((item) => {
         if (item.isDie)
           return;
@@ -953,7 +951,8 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
         return;
       }
       const maxNum = Math.max(...guild.nowTemp.map((item) => item.checkBevoted));
-      const maxUserList = guild.nowTemp.filter((item) => item.checkBevoted === maxNum)[0];
+      const filterList = guild.nowTemp.filter((item) => item.checkBevoted === maxNum);
+      const maxUserList = filterList[tool.random(0, filterList.length)]
       const msg = [maxUserList].map((item) => {
         if (item.checkVote / len > 0.5) {
           item.isCheck = true;
@@ -1020,6 +1019,17 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
 
   ctx
     .command('天黑请闭眼')
+
+
+  ctx
+    .command('天黑请闭眼/改名 <userName>')
+    .action(async ({ session }, userName) => {
+      if (darkEyes.playingUser[session.userId]) {
+        await session.send('当前您正在参与一局游戏中，考虑游戏公平性。暂时禁止改名')
+        return
+      }
+      await darkEyes.changePlayName(session, userName)
+    })
 
   ctx
     .command('天黑请闭眼/开始游戏')
