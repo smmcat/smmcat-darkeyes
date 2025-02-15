@@ -1028,7 +1028,12 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
         await session.send('当前您正在参与一局游戏中，考虑游戏公平性。暂时禁止改名')
         return
       }
-      await darkEyes.changePlayName(session, userName)
+      const res = await darkEyes.changePlayName(session, userName)
+      if (res.code) {
+        await session.send('[×] ' + res.msg)
+        return
+      }
+      await session.send('[√] ' + res.msg)
     })
 
   ctx
