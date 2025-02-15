@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-smmcat-darkeyes",
   "description": "在群内玩天黑请闭眼",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [

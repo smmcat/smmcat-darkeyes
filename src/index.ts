@@ -1029,7 +1029,7 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
         return
       }
       const res = await darkEyes.changePlayName(session, userName)
-      if (res.code) {
+      if (!res.code) {
         await session.send('[×] ' + res.msg)
         return
       }
