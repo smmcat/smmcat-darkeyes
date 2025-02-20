@@ -215,6 +215,8 @@ export function apply(ctx: Context, config: Config) {
     async readyPlay(session) {
       if (!session.guildId)
         return { code: false, msg: "请在群内准备游戏！" };
+      if (this.playingUser[session.userId])
+        return { code: false, msg: "您正在进行游戏，不能重复加入" };
       if (this.playGuild[session.guildId])
         return { code: false, msg: "该群已经正在进行游戏，不能重复开启" };
       this.playGuild[session.guildId] = {
@@ -253,7 +255,7 @@ export function apply(ctx: Context, config: Config) {
       if (!this.playGuild[session.guildId])
         return { code: false, msg: "当前群内还未开始游戏" };
       if (this.playingUser[session.userId])
-        return { code: false, msg: "您正在正在进行游戏，不能重复加入" };
+        return { code: false, msg: "您正在进行游戏，不能重复加入" };
       if (this.playGuild[session.guildId]?.isPlay)
         return { code: false, msg: "游戏已在进行，不能中途加入" };
       if (Object.keys(this.playGuild[session.guildId].playUser).length == 15)
@@ -313,9 +315,7 @@ export function apply(ctx: Context, config: Config) {
       this.playGuild[session.guildId].countDown && this.playGuild[session.guildId].countDown();
       const playUserList = Object.keys(this.playGuild[session.guildId].playUser);
       playUserList.forEach((item) => {
-        if (darkEyes.playGuild[session.guildId]?.playingUser?.[item]?.isDie || darkEyes.playGuild[session.guildId]?.playingUser?.[item]?.referendum) {
-          config.muteUser && session.bot.muteGuildMember && session.bot.muteGuildMember(session.guildId, item, 0);
-        }
+        config.muteUser && session.bot.muteGuildMember && session.bot.muteGuildMember(session.guildId, item, 0);
         delete darkEyes.playingUser[item];
       });
 
@@ -555,7 +555,8 @@ ${selsectKey.map((item) => {
         return true;
       }).map((item) => {
         return playList[item];
-      });
+      }).sort((a, b) => a.th_id - b.th_id);
+
       this.playGuild[guild].nowTemp = lifeList;
       switch (show) {
         case 0:
@@ -808,7 +809,7 @@ ${selsectKey.map((item) => {
       const guild = this.playingUser[session.userId];
       if (!this.playGuild[guild]?.isPlay)
         return { code: false, msg: "未开始进行游戏 请先 /开始游戏" };
-      if (this.playGuild[guild].playUser[session.userId].isDie || this.playGuild[guild].playUser[session.userId].referendum)
+      if (!(this.playGuild[guild].playUser[session.userId].isDie || this.playGuild[guild].playUser[session.userId].referendum))
         return { code: false, msg: "你还未阵亡，无法发表遗言" };
       if (this.playGuild[guild].playUser[session.userId].isLastWords)
         return { code: false, msg: "你已发表过遗言，无法再次发表遗言" };
@@ -964,7 +965,7 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
       });
     },
     // 重置投票信息
-    clerReferendum(session) {
+    clerReferendum(session: Session) {
       Object.keys(this.playGuild[session.guildId].playUser).forEach((item) => {
         darkEyes.playGuild[session.guildId].playUser[item].isVote = false;
         darkEyes.playGuild[session.guildId].playUser[item].isHeal = false;
@@ -1022,7 +1023,7 @@ ta 的身份是 「${infoRule.dict[item.duty]}」`;
 
 
   ctx
-    .command('天黑请闭眼/改名 <userName>')
+    .command('天黑请闭眼/修改名称 <userName>')
     .action(async ({ session }, userName) => {
       if (darkEyes.playingUser[session.userId]) {
         await session.send('当前您正在参与一局游戏中，考虑游戏公平性。暂时禁止改名')
